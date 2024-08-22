@@ -17,15 +17,12 @@ import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 
-const dashboard = () => {
+const Dashboard = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageCount, setMessageCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isSwitchLoading, setSwitchLoading] = useState(false);
   const { toast } = useToast();
-  const handleDeleteMessage = (messageId: string) => {
-    setMessages(messages.filter((message) => message._id !== messageId));
-  };
   const { data: session } = useSession();
 
   const form = useForm({
@@ -33,12 +30,11 @@ const dashboard = () => {
   });
   const { register, watch, setValue } = form;
   const acceptMessages = watch("acceptMessages");
+
   const fetchMessage = useCallback(async () => {
     setIsLoading(true);
     try {
       const response = await axios.get<ApiResponse>("/api/accept-message");
-      console.log(response.data.isAcceptionMessage);
-
       setValue("acceptMessages", response.data.isAcceptionMessage);
     } catch (error) {
       const axiosError = error as AxiosError<ApiResponse>;
@@ -51,25 +47,29 @@ const dashboard = () => {
       setIsLoading(false);
       setSwitchLoading(false);
     }
-  }, [setValue]);
+  }, [setValue, toast]);
 
-  useEffect(() => {
-    fetchMessage();
-    fetchMessages();
-  }, []);
-
-  const fetchMessageCount = async () => {
-    const response = await axios.get<ApiResponse>("/api/message-count");
-    if (response.data.success) {
-      setMessageCount(response.data.messageCount as number);
-    } else {
+  const fetchMessageCount = useCallback(async () => {
+    try {
+      const response = await axios.get<ApiResponse>("/api/message-count");
+      if (response.data.success) {
+        setMessageCount(response.data.messageCount as number);
+      } else {
+        toast({
+          title: "Error fetching message count",
+          description: "An error occurred",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      const axiosError = error as AxiosError<ApiResponse>;
       toast({
         title: "Error fetching message count",
-        description: "An error occurred",
+        description: axiosError.response?.data?.message ?? "An error occurred",
         variant: "destructive",
       });
     }
-  };
+  }, [toast]);
 
   const fetchMessages = useCallback(
     async (refresh: boolean = false) => {
@@ -101,16 +101,17 @@ const dashboard = () => {
         setSwitchLoading(false);
       }
     },
-    [setIsLoading, setMessages]
+    [toast]
   );
+
   useEffect(() => {
-    if (!session || !session.user) {
+    if (session && session.user) {
       fetchMessages();
       fetchMessage();
       fetchMessageCount();
     }
-  }, [session, setValue, fetchMessage, fetchMessages, setMessages]);
-  // handle switch change
+  }, [session, fetchMessage, fetchMessages, fetchMessageCount]);
+
   const handleSwitchChange = async () => {
     try {
       const response = await axios.post<ApiResponse>("/api/accept-message", {
@@ -130,18 +131,21 @@ const dashboard = () => {
       });
     }
   };
+
   if (!session || !session.user) {
     return (
-      <>
-        <div className="flex justify-center items-center h-10">
-          <Loader2 className="animate-spin" />
-        </div>
-      </>
+      <div className="flex justify-center items-center h-10">
+        <Loader2 className="animate-spin" />
+      </div>
     );
   }
-  const { username } = session?.user as User;
+
+  const { username } = session.user as User;
   const baseUrl = `${window.location.protocol}//${window.location.hostname}`;
   const profileUrl = `${baseUrl}/u/${username}`;
+  const handleDeleteMessage = (messageId: string) => {
+    setMessages(messages.filter((message) => message._id !== messageId));
+  };
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(profileUrl);
@@ -150,7 +154,6 @@ const dashboard = () => {
       description: "You can now share this link with your contacts",
     });
   };
-
   return (
     <>
       <div className="my-8 mx-4 md:mx-8 lg:mx-auto p-6 bg-white rounded-lg shadow-md w-full max-w-6xl">
@@ -239,4 +242,4 @@ const dashboard = () => {
   );
 };
 
-export default dashboard;
+export default Dashboard;
